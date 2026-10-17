@@ -1,0 +1,119 @@
+name: AngelTime
+
+options:
+  bundleIdPrefix: com.edrich
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Signing. Leave DEVELOPMENT_TEAM empty to sign ad-hoc ("Sign to Run Locally"), which needs
+    # no Apple developer account but leaves the widget unable to read the timer. Set it to your
+    # 10-character Team ID to sign with your Apple Development certificate, which the widget needs
+    # for its App Group. CODE_SIGN_IDENTITY is left unset so Xcode picks "-" or
+    # "Apple Development" to match. See "Widget" in README.md.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    # Shared container for the app and the widget. The team prefix lets macOS accept it without a
+    # provisioning profile.
+    APP_GROUP_ID: $(DEVELOPMENT_TEAM).com.edrich.AngelTime
+    ENABLE_HARDENED_RUNTIME: NO
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  AngelTime:
+    type: application
+    platform: macOS
+    sources:
+      - path: AngelTime
+      - path: Shared
+    dependencies:
+      - target: AngelTimeWidget
+    info:
+      path: AngelTime/Info.plist
+      properties:
+        CFBundleName: AngelTime
+        CFBundleDisplayName: AngelTime
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        NSHumanReadableCopyright: "A Pomodoro timer for your menu bar."
+        AngelTimeAppGroup: $(APP_GROUP_ID)
+        # The widget's buttons open angeltime://toggle and angeltime://skip if the app isn't running.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.edrich.AngelTime
+            CFBundleURLSchemes: [angeltime]
+    entitlements:
+      path: AngelTime/AngelTime.entitlements
+      properties:
+        com.apple.security.application-groups: [$(APP_GROUP_ID)]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.edrich.AngelTime
+        PRODUCT_NAME: AngelTime
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        COMBINE_HIDPI_IMAGES: YES
+
+  AngelTimeWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: AngelTimeWidget
+      - path: Shared
+      - path: AngelTime/Models/TimerMode.swift
+      - path: AngelTime/Models/ThemePalette.swift
+    info:
+      path: AngelTimeWidget/Info.plist
+      properties:
+        CFBundleDisplayName: AngelTime
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AngelTimeAppGroup: $(APP_GROUP_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: AngelTimeWidget/AngelTimeWidget.entitlements
+      properties:
+        # macOS only loads sandboxed widgets.
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [$(APP_GROUP_ID)]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.edrich.AngelTime.Widget
+        PRODUCT_NAME: AngelTimeWidget
+
+  AngelTimeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: AngelTimeTests
+    dependencies:
+      - target: AngelTime
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.edrich.AngelTimeTests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/AngelTime.app/Contents/MacOS/AngelTime
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  AngelTime:
+    build:
+      targets:
+        AngelTime: all
+        AngelTimeTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - AngelTimeTests
+    archive:
+      config: Release

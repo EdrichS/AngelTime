@@ -1,0 +1,418 @@
+================================================================================
+  ANGELTIME — BRAINSTORM
+  A native macOS Pomodoro timer, inspired by pomofocus.io
+================================================================================
+
+  Goal (from the brief)
+  ---------------------
+  - A native macOS Pomodoro timer
+  - Lives in the menu bar (a menu bar icon is the "widget")
+  - Opens a small window that shows ALL tasks, completed and not completed
+  - Pomodoro, short break and long break lengths can be changed
+
+
+================================================================================
+ 1. RESEARCH: WHAT POMOFOCUS.IO IS
+================================================================================
+
+ 1.1 Concept
+ -----------
+ Pomofocus calls itself "a customizable pomodoro timer that works on desktop &
+ mobile browser". It is the Pomodoro Technique (Francesco Cirillo) with a task
+ list attached:
+
+   1. Add tasks to work on today
+   2. Give each task an estimate in pomodoros (1 = 25 min of work)
+   3. Select a task to work on
+   4. Start the timer and focus for 25 minutes
+   5. Take a 5 minute break when the alarm rings
+   6. Repeat 3-5 until the tasks are done
+
+ Most of its value comes from linking the timer to the tasks. Each finished
+ pomodoro counts against the selected task ("1/3"). The list can then estimate
+ when you will be done ("Finish At 15:40 (2.1h)").
+
+ 1.2 Screen anatomy (observed on pomofocus.io)
+ ---------------------------------------------
+
+   +-------------------------------------------------------------+
+   |  (✓) Pomofocus                [Report] [Setting] [Sign In]  |  header
+   |-------------------------------------------------------------|
+   |        +-------------------------------------------+        |
+   |        |  [Pomodoro]  Short Break   Long Break     |        |  mode tabs
+   |        |                                           |        |
+   |        |                 25:00                     |        |  huge timer
+   |        |                                           |        |
+   |        |               [ START ]                   |        |  3D white btn
+   |        +-------------------------------------------+        |
+   |                          #1                                 |  session no.
+   |                    Time to focus!                           |  or task name
+   |  Tasks                                            [ ⋮ ]     |
+   |  ---------------------------------------------------------  |
+   |  ( ✓ ) Write chapter 2                         1/3   [ ⋮ ]  |  task rows
+   |  ( ✓ ) Email Sam                               0/1   [ ⋮ ]  |
+   |  + - - - - - - - - - - - - - - - - - - - - - - - - - - - +  |
+   |  |                    (+) Add Task                       |  |  dashed btn
+   |  + - - - - - - - - - - - - - - - - - - - - - - - - - - - +  |
+   |        Pomos: 1/4      Finish At: 15:40 (2.1h)              |  summary
+   +-------------------------------------------------------------+
+
+ 1.3 Visual language
+ -------------------
+   - The whole page is one solid color, and the color tells you the mode:
+       Pomodoro     #BA4949  (tomato red)     "Time to focus!"
+       Short Break  #38858A  (teal)           "Time for a break!"
+       Long Break   #397097  (steel blue)     "Time for a break!"
+     The color fades between modes, so you can tell the mode at a glance.
+   - The timer sits on a translucent white card (white @ ~10-20%).
+   - Large, bold, rounded numerals (~120px) are the hero element.
+   - The START button is solid white with mode-colored text. It has a thick
+     bottom "shadow" that disappears when pressed, so it looks physical.
+     When running, the label becomes PAUSE and a "skip" icon appears.
+   - Everything else is white text on the colored background. Task cards are
+     white with dark text, and the active task gets a dark left border.
+   - The browser tab title shows "24:13 - Time to focus!", so the timer is
+     visible from another tab. On macOS the menu bar can do this job.
+
+ 1.4 Settings (complete list as seen in the Setting modal)
+ ---------------------------------------------------------
+   TIMER        Time (minutes): Pomodoro 25 / Short Break 5 / Long Break 15
+                Auto Start Breaks            (off)
+                Auto Start Pomodoros         (off)
+                Long Break interval          4
+   TASK         Auto Check Tasks             (off) check a task when act >= est
+                Check to Bottom              (on)  move checked tasks down
+   SOUND        Alarm Sound (Kitchen, ...)  + volume + repeat
+                Focus Sound (ticking, noise) + volume
+   THEME        Color Themes (pick color per mode)
+                Hour Format (12/24)
+                Dark Mode when running
+                Small Window (pop-out mini timer)
+   NOTIFICATION Reminder "Last N min"
+                Mobile Alarm
+   REPORT       Start of the week
+   INTEGRATION  Todoist, Webhook
+
+ 1.5 Task model in Pomofocus
+ ---------------------------
+   - title ("What are you working on?")
+   - estimated pomodoros (stepper, "Est Pomodoros")
+   - actual pomodoros (counts up automatically; editable in edit mode)
+   - optional note
+   - optional project (premium)
+   - done flag (round check button)
+   - one task is "active". Its name replaces "Time to focus!" under the timer.
+   Tasks menu (⋮): Clear finished tasks / Use template / Import from Todoist /
+   Clear act pomodoros / Clear all tasks
+
+ 1.6 What makes it good (what to keep)
+ -------------------------------------
+   + Almost no setup: open it and press START
+   + Color carries the mode, so you hardly need to read anything
+   + One big number and one big button
+   + Tasks are light: no due dates, tags or priorities
+   + Estimates turn into a "finish at" time, which is motivating
+   + The settings are few, but they cover what people ask for
+
+ 1.7 What is weak in a browser (what native can fix)
+ ---------------------------------------------------
+   - The tab has to stay open. Closing it loses the timer.
+   - Timers in background tabs can be throttled.
+   - The timer is hidden unless the tab is in front.
+   - Ads, sign-in prompts and a marketing page below the fold
+   - Notifications depend on browser permission prompts
+
+
+================================================================================
+ 2. TRANSLATING TO macOS: DIVERGENT IDEAS
+================================================================================
+
+ 2.1 Where should the timer live?
+ --------------------------------
+   A) Regular windowed app (Dock icon + main window)
+      - Closer to the web page, but it is one more window to manage
+   B) Menu bar only (status item + popover)
+      - Always visible with no extra windows, which is where macOS utilities live
+   C) WidgetKit desktop / Notification Center widget
+      - Widgets cannot run a live second-by-second countdown on their own. They
+        need timeline tricks (Text(date, style: .timer)), interactive buttons
+        need AppIntents, and they need an App Group with a signed team ID to
+        share data with the app.
+   D) Hybrid: menu bar status item + popover for quick control
+              + small "Tasks" window for the full list
+              + Settings window
+
+   ==> Choose D. The menu bar icon is the always-visible "widget". The popover
+       is the quick controller and the small window is the full task view.
+       A WidgetKit widget goes to phase 2 because it needs a signed team and
+       App Groups.
+
+ 2.2 Menu bar technology
+ -----------------------
+   SwiftUI MenuBarExtra(.window)
+      + Very little code
+      - The label cannot use monospaced digits, so "12:11" -> "12:10" makes the
+        icon width jitter every second
+      - Hard to close programmatically and no right-click menu
+      - Opening Settings from an agent app is unreliable (SettingsLink quirks)
+   AppKit NSStatusItem + NSPopover hosting SwiftUI
+      + attributedTitle with monospacedDigitSystemFont, so no jitter
+      + Left click opens the popover and right click opens a native NSMenu
+      + Full control over closing and activation
+      + Windows can be NSWindow + NSHostingController, so they open reliably
+   ==> AppKit shell, SwiftUI content. Swift 5 mode, macOS 14+ (for @Observable).
+
+ 2.3 Dock icon?
+ --------------
+   A menu bar timer should not take a Dock slot, so LSUIElement = YES (agent app).
+   Problem: when the Tasks window is open, Cmd-Tab cannot reach it.
+   ==> Add a "Show in Dock" setting (off by default) that toggles
+       NSApp.setActivationPolicy(.regular / .accessory) at runtime.
+   Gotcha: agent apps have no visible menu bar, but Cmd-C/V/A in text fields
+   still go through NSApp.mainMenu. ==> Build a real main menu (App, Edit,
+   Window) in code so copy and paste work in the task editor.
+
+ 2.4 How to show the mode in a native way
+ ----------------------------------------
+   Idea 1: color the whole popover. NSPopover's arrow and frame keep the system
+           material, so the colored body under a gray arrow looks broken.
+   Idea 2: color only the timer card inside the popover (like the card on
+           pomofocus) and keep the task list in native materials. ✓
+   Idea 3: the Tasks window can be fully colored. Use fullSizeContentView with a
+           transparent titlebar so the color goes edge to edge. ✓ This is the
+           "mini pomofocus".
+   Menu bar: a template SF Symbol changes with the mode
+           (timer = focus, cup.and.saucer = break, pause.circle = paused).
+
+ 2.5 Ways to edit pomodoro, short and long break lengths (a core requirement)
+ ----------------------------------------------------------------------------
+   - Settings window "Timer" section, at the top: three fields with steppers,
+     in minutes, like pomofocus. ✓
+   - Right-click menu on the status item with "Timer Lengths…" to jump there. ✓
+   - Gear button in the popover footer. ✓
+   Rule for live edits:
+     * If the current session has NOT started (fresh, idle), the change
+       applies right away and the display updates (25:00 -> 50:00).
+     * If it is running or paused part-way through, it is left alone and the
+       new length applies to the next session. The UI says so.
+   Validation: whole minutes. Pomodoro 1-180, short 1-60, long 1-120, interval
+   1-12. Steppers clamp the values, and typed values are clamped too.
+
+
+================================================================================
+ 3. CONVERGE: INFORMATION ARCHITECTURE
+================================================================================
+
+   MENU BAR  [⏱ 24:13]
+     |-- left click  --> POPOVER (≈340 pt wide)
+     |                    +----------------------------------+
+     |                    | [Pomodoro][Short][Long]   (card) |
+     |                    |            24:13                 |
+     |                    |   [ PAUSE ]  ⟲  ⏭               |
+     |                    +----------------------------------+
+     |                    #3 · Write chapter 2
+     |                    TASKS (2 left)
+     |                    ( ) Write chapter 2     1/3   ← active
+     |                    ( ) Email Sam           0/1
+     |                    [ + Add a task…            ]
+     |                    Pomos 1/4 · Finish at 15:40
+     |                    [Tasks window] [Settings] [Quit]
+     |
+     |-- right click --> NSMenu: Start/Pause, Reset, Skip, Switch to ▸,
+                         Open Tasks Window, Timer Lengths…, Settings…, Quit
+
+   TASKS WINDOW (small, ~380 x 620, can float on top)
+     colored background (mode color), compact timer at the top,
+     task list in two sections:
+        TO DO (n)        draggable to reorder, click to make active
+        COMPLETED (n)    struck through, collapsible
+     dashed "Add Task" button that opens an inline editor
+     footer: Pomos act/est · Finish At hh:mm (x.xh) · Today: n 🍅 · 1h 40m
+
+   SETTINGS WINDOW (Form, grouped)
+     Timer · Tasks · Sound · Notifications · Appearance · General
+
+
+================================================================================
+ 4. TIMER ENGINE: STATE MACHINE
+================================================================================
+
+   States: mode ∈ {pomodoro, shortBreak, longBreak} × {idle, running, paused}
+
+            start()                   remaining hits 0 / skip()
+   [idle] ----------> [running] ------------------------------+
+     ^  ^               |   ^                                 |
+     |  | reset()  pause()  | start()                         v
+     |  +--------- [paused] -+                       finishSession()
+     |                                                        |
+     +-------- switchTo(next, autoStart?) <-------------------+
+
+   finishSession(mode):
+     if mode == pomodoro:
+         completedToday += 1
+         active task: actPomodoros += 1
+            and if autoCheck && act >= est then mark done (+ move to bottom)
+         next = (completedToday % longBreakInterval == 0) ? longBreak : shortBreak
+         autoStart = settings.autoStartBreaks
+     else:
+         next = pomodoro
+         autoStart = settings.autoStartPomodoros
+     ring alarm + post notification (unless the user skipped)
+     switchTo(next, autoStart)
+
+   Timekeeping: never decrement a counter. Store endDate when started and
+   compute remaining = endDate - now on every tick (0.25 s on RunLoop .common so
+   it keeps ticking while menus are open). This stays correct after
+   sleep/wake and app hiccups. Pausing stores the remaining TimeInterval.
+   Display uses ceil(remaining) so it shows 25:00 for the first second and
+   00:00 only at the very end. Only the whole-second value is observable, so
+   SwiftUI redraws once per second instead of 4×.
+
+   "#N" = completed pomodoros today + 1 (while in focus). It resets at midnight.
+   Long-break cycle uses the same counter, so 4 focus sessions lead to a long break.
+
+   Skip (⏭) = finish now. Like pomofocus, it advances the round and credits the
+   task, but there is no alarm and no notification.
+
+   Reminder: optional "N minutes left" notification once per session.
+
+
+================================================================================
+ 5. DATA MODEL & PERSISTENCE
+================================================================================
+
+   PomoTask (Codable)
+     id: UUID
+     title: String
+     note: String
+     estimatedPomodoros: Int      (1...99)
+     completedPomodoros: Int      (0...)
+     isDone: Bool
+     createdAt: Date
+     completedAt: Date?
+
+   TaskStore (@Observable)
+     tasks: [PomoTask]         (one ordered array; "To do" and "Completed" are
+                                filtered views of it)
+     activeTaskID: UUID?
+     add / update / delete / toggleDone / setActive / movePending
+     clearFinished / clearActPomodoros / clearAll
+     recordPomodoro()          (called by the engine)
+     estimate(...)             -> remaining pomos, finish date
+
+   Persistence
+     tasks  -> ~/Library/Application Support/AngelTime/tasks.json (atomic write)
+     settings, today's count and focus time -> UserDefaults
+
+   Finish-at estimate (like pomofocus)
+     remainingPomos = Σ max(est - act, 0) over unfinished tasks
+     walk the sessions: pomodoro, then a short or long break between them by
+     the interval rule. Subtract time already used if a focus session is
+     running. finish = now + total.
+
+
+================================================================================
+ 6. SETTINGS SPEC (v1)
+================================================================================
+
+   Timer
+     Pomodoro (min)            25     1...180
+     Short Break (min)          5     1...60
+     Long Break (min)          15     1...120
+     Long Break interval        4     1...12
+     Auto Start Breaks         off
+     Auto Start Pomodoros      off
+   Tasks
+     Auto Check Tasks          off
+     Check to Bottom           on
+   Sound
+     Alarm sound               Glass   (macOS system sounds, or None) ▶ preview
+     Volume                    70%
+     Repeat                    1×      1...5
+   Notifications
+     Notify when a session ends   on   (with "Start Break" / "Start Focus" action)
+     Reminder before end          off / 1 / 2 / 5 min
+   Appearance
+     Show timer in menu bar    on
+     Theme colors              one swatch row per mode (8 presets)
+   General
+     Keep Tasks window on top  off
+     Show in Dock              off
+     Launch at login           off   (SMAppService)
+     Reset all settings
+
+
+================================================================================
+ 7. VISUAL SPEC
+================================================================================
+
+   Palette (presets, pomofocus defaults first)
+     Tomato  #BA4949   Teal  #38858A   Steel  #397097   Plum   #845A84
+     Moss    #5E7D4A   Amber #A8732D   Slate  #4E5A6B   Rose   #A64D6B
+
+   Timer numerals : SF Pro Rounded, bold, monospacedDigit
+                    (popover 64pt, window 72pt)
+   START button   : white, mode-colored text, 6pt rounded rect, 4pt
+                    darker bottom "lip". When pressed it drops 4pt and the lip
+                    disappears, like pomofocus.
+   Mode tabs      : text buttons. The selected one sits on a black @ 15% pill.
+   Task card      : white, 8pt radius, active = 6pt dark left bar
+   Check button   : gray circle with check. Done = filled with mode color.
+   Add Task       : dashed 2pt border, white @ 60%, black @ 10% fill
+   Animations     : 0.4s color crossfade on mode change, springy button press
+
+
+================================================================================
+ 8. EDGE CASES CHECKLIST
+================================================================================
+
+   [x] Mac sleeps mid-session -> on wake, the endDate math finishes the session
+   [x] Duration changed while running -> applies next session (UI says so)
+   [x] Duration changed while idle -> applies right away
+   [x] Active task deleted -> next unfinished task becomes active
+   [x] Active task completed -> next unfinished task becomes active
+   [x] No tasks -> "Time to focus!" / "Time for a break!" fallback text
+   [x] Day rollover -> #N and today's stats reset
+   [x] Popover open while timer ends -> UI updates live, alarm still rings
+   [x] Copy/paste in text fields of an agent app -> real Edit menu
+   [x] Notifications denied -> alarm sound still plays, and settings shows status
+   [x] Launch-at-login fails (unsigned build) -> show the error, don't crash
+
+
+================================================================================
+ 9. OUT OF SCOPE FOR v1 → PHASE 2 IDEAS
+================================================================================
+
+   - WidgetKit widget (desktop / Notification Center) using App Group shared
+     state + Text(timerInterval:) countdown + AppIntent buttons
+   - Focus sounds (ticking, white/brown noise) with AVAudioEngine
+   - Reports: daily / weekly charts with Swift Charts
+   - Projects, templates, Todoist import
+   - Global hotkey to start/pause
+   - Focus Filter / Do Not Disturb integration during pomodoros
+   - iCloud sync of tasks
+
+
+================================================================================
+ 10. BUILD PLAN
+================================================================================
+
+   Name        AngelTime (from the project folder)
+   Bundle id   com.edrich.AngelTime
+   Target      macOS 14.0+, Swift 5 mode, SwiftUI + AppKit, no 3rd-party deps
+   Project     XcodeGen project.yml -> AngelTime.xcodeproj (also committed)
+   Signing     ad-hoc ("Sign to Run Locally"), so no Apple developer team needed
+
+   AngelTime/
+     App/        main.swift, AppDelegate, MainMenu
+     Models/     TimerMode, PomoTask, AppSettings, ThemePalette
+     Stores/     TaskStore, TimerEngine
+     Services/   AlarmPlayer, NotificationService, LaunchAtLogin, Observation
+     UI/         StatusItemController, WindowManager
+     Views/      PopoverView, TimerCard, TasksWindowView, TaskRow,
+                 TaskEditor, SettingsView, Components
+   AngelTimeTests/  engine cycle, auto-check, live duration edits, estimates
+
+   Order: models -> stores/engine -> tests -> status item + popover
+          -> tasks window -> settings -> icon -> build & click-through
+================================================================================
